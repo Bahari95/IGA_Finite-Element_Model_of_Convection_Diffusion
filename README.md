@@ -17,4 +17,4 @@ Isogemetric Analysis Model of Convection/Diffusion equation
   https://github.com/Bahari95/simplines
 
 
-![PNG]()
+![PNG](https://github.com/Bahari95/IGA_Finite-Element_Model_of_Convection_Diffusion/blob/main/three_dimension/solution.png)
