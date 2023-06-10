@@ -10,16 +10,22 @@ from simplines import prolongation_matrix
 #---In Poisson equation
 from gallery_section_04 import assemble_vector_ex01
 from gallery_section_04 import assemble_vector_ex02
+from gallery_section_04 import assemble_vector_ex03
+
 from gallery_section_04 import assemble_matrix_ex01
 from gallery_section_04 import assemble_matrix_ex02
 from gallery_section_04 import assemble_matrix_ex03
+
 from gallery_section_04 import assemble_norm_ex01
+
+assemble_rhs         = compile_kernel(assemble_vector_ex01, arity=1)
+assemble_in_rhs      = compile_kernel(assemble_vector_ex02, arity=1)
+assemble_f_rhs       = compile_kernel(assemble_vector_ex03, arity=1)
 
 assemble_stiffness2D = compile_kernel(assemble_matrix_ex01, arity=2)
 assemble_mass2D      = compile_kernel(assemble_matrix_ex02, arity=2)
 assemble_advec2D     = compile_kernel(assemble_matrix_ex03, arity=2)
-assemble_rhs         = compile_kernel(assemble_vector_ex01, arity=1)
-assemble_in_rhs      = compile_kernel(assemble_vector_ex02, arity=1)
+
 assemble_norm_l2     = compile_kernel(assemble_norm_ex01, arity=1)
 
 #---mae : In one dimension
@@ -141,15 +147,18 @@ class Convection_diffusion(object):
        l2_norm             = norm[0]
        H1_norm             = norm[1]
        return u, x, l2_norm, H1_norm
-       
-    def solve(self, u_n = None, time = None):
+
+    def solve(self, u_n = None, time = None, B = None, u_f0 = None, u_f1 = None):
              
        u                   = StencilVector(self.V.vector_space)
-       #--Assembles a right hand side of Poisson equation
-       rhs                 = assemble_rhs( self.V, fields=[u_n], value = [self.Re_Pe, time, self.dt])
-       rhs                 = apply_dirichlet(self.V, rhs)
-       b                   = rhs.toarray()
-
+       if B is None:
+           #--Assembles a right hand side of Poisson equation
+           rhs                 = assemble_rhs( self.V, fields=[u_n], value = [self.Re_Pe, time, self.dt])
+           rhs                 = apply_dirichlet(self.V, rhs)
+           b                   = rhs.toarray()
+       else :
+           rhs                 = np.cos(np.pi*time)*u_f0.toarray()+ np.sin(np.pi*time)*u_f1.toarray()
+           b = (self.m.toarray()).dot( u_n.toarray() + dt*B.dot( rhs ))
        # ...
        x                   = self.lu.solve(b)
        x                   = x.reshape(self.V.nbasis)
@@ -162,6 +171,28 @@ class Convection_diffusion(object):
        H1_norm             = norm[1]
        return u, x, l2_norm, H1_norm
 
+def Proj_f(V, Re_Pe):
+       mass                = assemble_mass2D(V)
+       m                   = mass.tosparse()             
+       lum                 = sla.splu(csc_matrix(m))
+       #--Assembles a right hand side of Poisson equation
+       rhs                 = assemble_f_rhs( V , value = [Re_Pe, 0])
+       b0                  = rhs.toarray()
+       # ...
+       rhs                 = assemble_f_rhs( V , value = [Re_Pe, 1])
+       b1                  = rhs.toarray()
+       # ...
+       u0                  = StencilVector(V.vector_space)
+       x                   = lum.solve(b0)
+       x                   = x.reshape(V.nbasis)
+       u0.from_array(V, x)
+       # ... 
+       u                   = StencilVector(V.vector_space)
+       x                   = lum.solve(b1)
+       x                   = x.reshape(V.nbasis)
+       u.from_array(V, x)
+       return u0, u
+       
 '''
 nbr_freedm    = 202410
 # ...
@@ -194,13 +225,33 @@ nelements_x   = 16
 nelements_y   = 20
 nelements_z   = 32
 
-print('total number of freedom = ', (nelements_x + degree) * (nelements_y + degree) *(nelements_z + degree))
+n             = (nelements_x + degree) * (nelements_y + degree) *(nelements_z + degree)
+print('total number of freedom = ', n)
 # ...
 Re_Pe       = 1.
 dt          = 1e-4
 t_f         = 0.02
 t           = 0. # initial time
 
+'''
+grid_h  = np.linspace(-3., 3., nelements_z+1)
+
+#----------------------
+grid_x  = np.linspace( 0., 2., nelements_x+1)
+grid_y  = np.linspace(-2., 2., nelements_y+1)
+grid_z  = np.linspace(-3., 3., nelements_z-2+1)
+grid_z[:nelements_z//4]  = grid_h[:nelements_z//4]
+grid_z[nelements_z//4:nelements_z//2]  = grid_h[nelements_z//4+1:nelements_z//2+1]
+grid_z[nelements_z//2:]  = grid_h[nelements_z//2+2:]
+
+# create the spline space for each direction
+V1   = SplineSpace(degree=degree, nelements= nelements_x, grid= grid_x, nderiv = 1)
+V2   = SplineSpace(degree=degree, nelements= nelements_y, grid= grid_y, nderiv = 1)
+V3   = SplineSpace(degree=degree, nelements= nelements_z, grid= grid_z, nderiv = 1)
+V_f  = TensorSpace(V1, V2, V3)
+
+u_f0, u_f1 = Proj_f(V_f, Re_Pe)
+'''
 #----------------------
 #..... Initialisation and computing optimal mapping for 16*16
 #----------------------
@@ -213,6 +264,10 @@ V1   = SplineSpace(degree=degree, nelements= nelements_x, grid= grid_x, nderiv =
 V2   = SplineSpace(degree=degree, nelements= nelements_y, grid= grid_y, nderiv = 1)
 V3   = SplineSpace(degree=degree, nelements= nelements_z, grid= grid_z, nderiv = 1)
 V    = TensorSpace(V1, V2, V3)
+
+# ... Matrix of prolongation 
+#B    = prolongation_matrix(V_f, V)
+#print(" Dimension of B : n x p = ", B.shape)
 
 # ... Initialization
 Cd   = Convection_diffusion(V1, V2, V3, V, Re_Pe, dt)

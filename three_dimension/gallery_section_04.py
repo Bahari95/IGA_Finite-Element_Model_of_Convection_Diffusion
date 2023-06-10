@@ -414,6 +414,79 @@ def assemble_vector_ex02(ne1, ne2, ne3, p1, p2, p3, spans_1, spans_2, spans_3,  
 
                       rhs[i1+p1,i2+p2,i3+p3] += v   
     # ...
+
+#==============================================================================
+#---1 : Assemble rhs Poisson
+@types('int', 'int', 'int', 'int', 'int', 'int', 'int[:]', 'int[:]', 'int[:]', 'double[:,:,:,:]', 'double[:,:,:,:]', 'double[:,:,:,:]', 'double[:,:]', 'double[:,:]', 'double[:,:]', 'double[:,:]', 'double[:,:]', 'double[:,:]', 'real', 'int', 'double[:,:,:]')
+def assemble_vector_ex03(ne1, ne2, ne3, p1, p2, p3, spans_1, spans_2, spans_3,  basis_1, basis_2, basis_3,  weights_1, weights_2, weights_3, points_1, points_2, points_3, Re_Pe, term, rhs):
+
+    from numpy import exp
+    from numpy import pi
+    from numpy import sin
+    from numpy import arctan2
+    from numpy import cos, cosh
+    from numpy import sqrt
+    from numpy import zeros
+
+    # ... sizes
+    k1        = weights_1.shape[1]
+    k2        = weights_2.shape[1]
+    k3        = weights_3.shape[1]
+    
+    # ...
+    lvalues_u = zeros((k1, k2, k3))
+    # ...
+    v_b1 = 1.
+    v_b2 = 1.
+    v_b3 = 1.
+    # ... build rhs
+    for ie1 in range(0, ne1):
+        i_span_1 = spans_1[ie1]
+        for ie2 in range(0, ne2):
+            i_span_2 = spans_2[ie2]
+            for ie3 in range(0, ne3):
+                i_span_3 = spans_3[ie3]
+
+                for g1 in range(0, k1):
+                   for g2 in range(0, k2):
+                      for g3 in range(0, k3):
+
+                            wvol  = weights_1[ie1, g1]*weights_2[ie2, g2]*weights_3[ie3, g3]
+                                        
+                            x     =  points_1[ie1, g1]
+                            y     =  points_2[ie2, g2]
+                            z     =  points_3[ie3, g3]
+                            #.. Test 1
+                            if term == 0 :
+                                 f     = pi*sin(pi*x)*sin(pi*y)*sin(pi*z) 
+                            else :
+                                  f     = (3.*pi**2*sin(pi*x)*sin(pi*y)*sin(pi*z))/Re_Pe
+                                  f    += v_b1*pi*cos(pi*x)*sin(pi*y)*sin(pi*z) + v_b2*pi*sin(pi*x)*cos(pi*y)*sin(pi*z) + v_b3*pi*sin(pi*x)*sin(pi*y)*cos(pi*z)
+
+                            lvalues_u[g1,g2,g3]  = f
+
+                for il_1 in range(0, p1+1):
+                  for il_2 in range(0, p2+1):
+                    for il_3 in range(0, p3+1):
+
+                      i1 = i_span_1 - p1 + il_1
+                      i2 = i_span_2 - p2 + il_2
+                      i3 = i_span_3 - p3 + il_3
+
+                      v = 0.0
+                      for g1 in range(0, k1):
+                         for g2 in range(0, k2):
+                            for g3 in range(0, k3):
+
+                              bi_0 = basis_1[ie1, il_1, 0, g1] * basis_2[ie2, il_2, 0, g2] * basis_3[ie3, il_3, 0, g3]
+
+                              wvol = weights_1[ie1, g1] * weights_2[ie2, g2] * weights_3[ie3, g3]
+
+                              u    = lvalues_u[g1,g2,g3]
+                              v   += bi_0 * u * wvol
+
+                      rhs[i1+p1,i2+p2,i3+p3] += v   
+    # ...
 #==============================================================================
 #---1 : Assemble l2 and H1 error norm
 #==============================================================================
